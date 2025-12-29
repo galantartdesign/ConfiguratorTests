@@ -2,90 +2,80 @@
 <html lang="pl">
 <head>
     <meta charset="UTF-8">
-    <title>Kreator Bombki Pro - Galant Art Design</title>
+    <title>Kreator Bombki Pro</title>
     <style>
         :root { --panel-bg: #1e1e1e; --item-bg: #2d2d2d; --text: #e0e0e0; --accent: #3498db; }
         body { margin: 0; font-family: 'Segoe UI', sans-serif; display: flex; height: 100vh; background: #000; color: var(--text); overflow: hidden; }
         #canvas-container { flex: 1; position: relative; }
         #ui-panel { width: 380px; background: var(--panel-bg); padding: 20px; overflow-y: auto; border-left: 1px solid #333; }
         .section { background: var(--item-bg); border-radius: 10px; padding: 15px; margin-bottom: 20px; border: 1px solid #444; }
-        h3 { font-size: 13px; margin: 0 0 15px 0; text-transform: uppercase; color: #888; letter-spacing: 1px; }
+        h3 { font-size: 13px; margin: 0 0 12px 0; text-transform: uppercase; color: #888; }
         label { display: block; font-size: 11px; margin: 10px 0 5px; color: #aaa; }
-        .control-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-        input[type="text"], select, input[type="range"] { width: 100%; background: #111; color: white; border: 1px solid #444; padding: 8px; border-radius: 4px; box-sizing: border-box; }
-        input[type="color"] { width: 40px; height: 34px; border: none; background: none; cursor: pointer; }
-        button { background: #444; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 11px; }
+        .control-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+        input[type="color"], select, input[type="range"] { width: 100%; background: #111; color: white; border: 1px solid #444; padding: 8px; border-radius: 4px; }
+        input[type="color"] { height: 40px; padding: 2px; cursor: pointer; }
+        button { background: #444; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 11px; flex: 1; }
         button:hover { background: #555; }
         #loader { position: fixed; inset: 0; background: #000; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 1000; }
-        .spinner { border: 4px solid #333; border-top: 4px solid var(--accent); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin-bottom: 15px; }
+        .spinner { border: 4px solid #333; border-top: 4px solid var(--accent); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
 
-<div id="loader"><div class="spinner"></div><p id="load-text">Wczytywanie sceny...</p></div>
+<div id="loader"><div class="spinner"></div><p>Wczytywanie sceny...</p></div>
 <div id="canvas-container"></div>
 
 <div id="ui-panel">
     <div class="section">
-        <h3>Bombka (Sphere)</h3>
-        <div class="control-row">
-            <input type="color" id="col-Sphere" value="#ffffff" oninput="updateColor('Sphere', this.value)">
-            <button onclick="updatePhysic('Sphere', 0.05, 0.5)">Glossy</button>
+        <h3>1. Oświetlenie i Tło</h3>
+        <label>Wybierz HDRI:</label>
+        <select id="hdri-select" onchange="updateHDRI(this.value)">
+            <option value="textures/geislingen_an_der_steige_2k.hdr">Geislingen</option>
+            <option value="textures/royal_esplanade_4k.hdr">Royal Esplanade</option>
+            <option value="textures/spiaggia_di_mondello_4k.hdr">Spiaggia Mondello</option>
+        </select>
+        
+        <label>Tryb tła:</label>
+        <select id="bg-mode" onchange="toggleBackgroundMode(this.value)">
+            <option value="hdri">Pokaż HDRI</option>
+            <option value="color">Jednolity Kolor</option>
+        </select>
+
+        <label>Kolor tła:</label>
+        <input type="color" id="bg-color-picker" value="#000000" oninput="updateBgColor(this.value)">
+
+        <label>Obrót HDRI (Światło):</label>
+        <input type="range" min="0" max="6.28" step="0.01" value="0" oninput="rotateEnv(this.value)">
+    </div>
+
+    <div class="section">
+        <h3>2. Bombka (Sphere)</h3>
+        <input type="color" value="#ffffff" oninput="updateColor('Sphere', this.value)">
+        <div class="control-row" style="margin-top:10px">
+            <button onclick="updatePhysic('Sphere', 0.05, 0.4)">Glossy</button>
             <button onclick="updatePhysic('Sphere', 0.9, 0.0)">Matte</button>
             <button onclick="updatePhysic('Sphere', 0.2, 1.0)">Metal</button>
         </div>
     </div>
 
     <div class="section">
-        <h3>Wstążka i Zawieszka</h3>
-        <div class="control-row">
-            <input type="color" id="col-Ribbon" value="#ffffff" oninput="updateColor('Ribbon', this.value); updateColor('Hang', this.value)">
-            <button onclick="updatePhysic('Ribbon', 0.1, 0.2); updatePhysic('Hang', 0.1, 0.2)">Glossy</button>
+        <h3>3. Wstążka i Zawieszka</h3>
+        <input type="color" value="#ffffff" oninput="updateColor('Ribbon', this.value); updateColor('Hang', this.value)">
+        <div class="control-row" style="margin-top:10px">
+            <button onclick="updatePhysic('Ribbon', 0.1, 0.1); updatePhysic('Hang', 0.1, 0.1)">Glossy</button>
             <button onclick="updatePhysic('Ribbon', 0.9, 0.0); updatePhysic('Hang', 0.9, 0.0)">Matte</button>
             <button onclick="updatePhysic('Ribbon', 0.2, 1.0); updatePhysic('Hang', 0.2, 1.0)">Metal</button>
         </div>
-        <label>Skala Wstążki:</label>
-        <div class="control-row">
-            <button onclick="setScale('Ribbon', 0.6)">0.6x</button>
-            <button onclick="setScale('Ribbon', 1.0)">1.0x</button>
-            <button onclick="setScale('Ribbon', 1.3)">1.3x</button>
-        </div>
     </div>
 
     <div class="section">
-        <h3>Oświetlenie i Tło</h3>
-        <label>Mapa HDRI:</label>
-        <select id="hdri-select" onchange="updateHDRI(this.value)">
-            <option value="textures/geislingen_an_der_steige_2k.hdr">Geislingen</option>
-            <option value="textures/royal_esplanade_4k.hdr">Royal Esplanade</option>
-            <option value="textures/spiaggia_di_mondello_4k.hdr">Spiaggia Mondello</option>
-        </select>
-        <label>Widoczność tła:</label>
-        <select onchange="toggleBackground(this.value)">
-            <option value="hdri">Pokaż HDRI</option>
-            <option value="color">Jednolity Kolor</option>
-        </select>
-        <label>Kolor tła:</label>
-        <input type="color" value="#000000" oninput="updateBgColor(this.value)">
-        <label>Obrót HDRI:</label>
-        <input type="range" min="0" max="6.28" step="0.01" value="0" oninput="rotateEnv(this.value)">
-    </div>
-
-    <div class="section">
-        <h3>Nadruk i Etykieta</h3>
-        <label>Logo (PNG):</label>
+        <h3>4. Etykiety i Logo</h3>
+        <label>Logo (.png):</label>
         <input type="file" accept="image/png" onchange="updateTexture('Logo', this)">
-        <label>Etykieta Front:</label>
+        <label>Etykieta Front / Tył:</label>
         <input type="file" onchange="updateBadgeSide('Badge_Front', this)">
-        <label>Etykieta Tył:</label>
         <input type="file" onchange="updateBadgeSide('Badge_Back', this)">
-        <label>Skala Etykiety:</label>
-        <div class="control-row">
-            <button onclick="setScale('Badge', 0.6)">0.6x</button>
-            <button onclick="setScale('Badge', 1.0)">1.0x</button>
-            <button onclick="setScale('Badge', 1.3)">1.3x</button>
-        </div>
     </div>
 </div>
 
@@ -104,8 +94,7 @@
     import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-    let scene, camera, renderer, controls, model, pmremGenerator, currentEnvMap;
-    const texLoader = new THREE.TextureLoader();
+    let scene, camera, renderer, controls, model, pmremGenerator, currentEnvTexture;
 
     async function init() {
         scene = new THREE.Scene();
@@ -124,7 +113,6 @@
         controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
 
-        // Start
         updateHDRI(document.getElementById('hdri-select').value);
 
         new GLTFLoader().load('Bombka.glb', (gltf) => {
@@ -135,6 +123,43 @@
 
         animate();
     }
+
+    window.updateHDRI = (path) => {
+        new RGBELoader().load(path, (texture) => {
+            const envMap = pmremGenerator.fromEquirectangular(texture).texture;
+            currentEnvTexture = envMap;
+            scene.environment = envMap;
+            
+            // Jeśli tryb to HDRI, ustaw też tło
+            if (document.getElementById('bg-mode').value === 'hdri') {
+                scene.background = envMap;
+            }
+            texture.dispose();
+        });
+    };
+
+    window.toggleBackgroundMode = (mode) => {
+        if (mode === 'color') {
+            const col = document.getElementById('bg-color-picker').value;
+            scene.background = new THREE.Color(col);
+        } else {
+            scene.background = currentEnvTexture;
+        }
+    };
+
+    window.updateBgColor = (hex) => {
+        document.getElementById('bg-mode').value = 'color';
+        scene.background = new THREE.Color(hex);
+    };
+
+    window.rotateEnv = (val) => {
+        const rot = parseFloat(val);
+        // Kluczowa poprawka rotacji dla Three.js r160
+        scene.environmentRotation.set(0, rot, 0);
+        if (scene.background instanceof THREE.Texture) {
+            scene.backgroundRotation.set(0, rot, 0);
+        }
+    };
 
     window.updateColor = (name, hex) => {
         const color = new THREE.Color(hex);
@@ -154,40 +179,10 @@
         });
     };
 
-    window.updateHDRI = (path) => {
-        new RGBELoader().load(path, (texture) => {
-            const envMap = pmremGenerator.fromEquirectangular(texture).texture;
-            currentEnvMap = envMap;
-            scene.environment = envMap;
-            if (scene.background instanceof THREE.Texture || !scene.background) {
-                scene.background = envMap;
-            }
-            texture.dispose();
-        });
-    };
-
-    window.toggleBackground = (type) => {
-        if (type === 'color') {
-            scene.background = new THREE.Color(0x000000);
-        } else {
-            scene.background = currentEnvMap;
-        }
-    };
-
-    window.updateBgColor = (hex) => {
-        scene.background = new THREE.Color(hex);
-    };
-
-    window.rotateEnv = (val) => {
-        const rotation = parseFloat(val);
-        if (scene.environment) scene.environmentRotation.y = rotation;
-        if (scene.background instanceof THREE.Texture) scene.backgroundRotation.y = rotation;
-    };
-
     window.updateTexture = (name, input) => {
         if (!input.files[0]) return;
         const url = URL.createObjectURL(input.files[0]);
-        texLoader.load(url, (tex) => {
+        new THREE.TextureLoader().load(url, (tex) => {
             tex.flipY = false;
             tex.colorSpace = THREE.SRGBColorSpace;
             model.traverse(n => {
@@ -203,7 +198,7 @@
     window.updateBadgeSide = (matName, input) => {
         if (!input.files[0]) return;
         const url = URL.createObjectURL(input.files[0]);
-        texLoader.load(url, (tex) => {
+        new THREE.TextureLoader().load(url, (tex) => {
             tex.flipY = false;
             model.traverse(n => {
                 if (n.isMesh && n.name.includes('Badge')) {
@@ -217,10 +212,6 @@
                 }
             });
         });
-    };
-
-    window.setScale = (name, s) => {
-        model.traverse(n => { if (n.name.includes(name)) n.scale.set(s, s, s); });
     };
 
     function animate() {
