@@ -25,7 +25,7 @@
 </head>
 <body>
 
-<div id="loader"><div class="spinner"></div><p>Wczytywanie bombki...</p></div>
+<div id="loader"><div class="spinner"></div><p>Wczytywanie...</p></div>
 <div id="canvas-container"></div>
 
 <div id="ui-panel">
@@ -47,26 +47,38 @@
     </div>
 
     <div class="section">
-        <h3>2. Bombka i Wstążka</h3>
-        <label>Kolor Bombki:</label>
+        <h3>2. Bombka (Sphere)</h3>
         <div class="input-group">
             <input type="color" id="cp-Sphere" value="#ffffff" oninput="updateColor('Sphere', this.value)">
             <input type="text" id="hex-Sphere" placeholder="#ffffff" onchange="updateColor('Sphere', this.value)">
         </div>
-        <label>Kolor Wstążki i Zawieszki:</label>
-        <div class="input-group">
-            <input type="color" id="cp-Ribbon" value="#ffffff" oninput="updateColor('Ribbon', this.value); updateColor('Hang', this.value)">
-            <input type="text" id="hex-Ribbon" placeholder="#ffffff" onchange="updateColor('Ribbon', this.value); updateColor('Hang', this.value)">
+        <div class="control-row">
+            <button onclick="updatePhysic('Sphere', 0.05, 0.4)">Glossy</button>
+            <button onclick="updatePhysic('Sphere', 0.9, 0.0)">Matte</button>
+            <button onclick="updatePhysic('Sphere', 0.2, 1.0)">Metal</button>
         </div>
     </div>
 
     <div class="section">
-        <h3>3. Etykieta (Badge)</h3>
-        <label>Wgraj Front (Badge_Front):</label>
-        <input type="file" onchange="updateBadgeSide('Badge_Front', this)">
+        <h3>3. Wstążka i Zawieszka</h3>
+        <div class="input-group">
+            <input type="color" id="cp-Ribbon" value="#ffffff" oninput="updateColor('Ribbon', this.value); updateColor('Hang', this.value); updateColor('Wire', this.value)">
+            <input type="text" id="hex-Ribbon" placeholder="#ffffff" onchange="updateColor('Ribbon', this.value); updateColor('Hang', this.value); updateColor('Wire', this.value)">
+        </div>
+        <div class="control-row">
+            <button onclick="updatePhysic('Ribbon', 0.1, 0.2); updatePhysic('Hang', 0.1, 0.2)">Glossy</button>
+            <button onclick="updatePhysic('Ribbon', 0.9, 0.0); updatePhysic('Hang', 0.9, 0.0)">Matte</button>
+            <button onclick="updatePhysic('Ribbon', 0.2, 1.0); updatePhysic('Hang', 0.2, 1.0)">Metal</button>
+        </div>
+    </div>
+
+    <div class="section">
+        <h3>4. Etykieta (Badge)</h3>
+        <label>Slot 1: Przód (Badge_Front)</label>
+        <input type="file" id="texFront" accept="image/*">
         
-        <label>Wgraj Tył (Badge_Back):</label>
-        <input type="file" onchange="updateBadgeSide('Badge_Back', this)">
+        <label>Slot 2: Tył (Badge_Back)</label>
+        <input type="file" id="texBack" accept="image/*">
         
         <label>Skala Etykiety:</label>
         <div class="control-row">
@@ -77,8 +89,8 @@
     </div>
 
     <div class="section">
-        <h3>4. Logo</h3>
-        <input type="file" accept="image/png" onchange="updateLogoTexture(this)">
+        <h3>5. Logo</h3>
+        <input type="file" accept="image/png" id="texLogo">
     </div>
 </div>
 
@@ -98,7 +110,7 @@
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
     let scene, camera, renderer, controls, model, pmremGenerator, currentHDRTexture;
-    const texLoader = new THREE.TextureLoader();
+    const textureLoader = new THREE.TextureLoader();
 
     async function init() {
         scene = new THREE.Scene();
@@ -128,7 +140,7 @@
         animate();
     }
 
-    // --- LOGIKA HDRI ---
+    // --- HDRI LOGIC (NOWA) ---
     window.updateHDRI = (path) => {
         new RGBELoader().load(path, (texture) => {
             texture.mapping = THREE.EquirectangularReflectionMapping;
@@ -150,6 +162,62 @@
         }
     };
 
+    // --- OBSŁUGA TEKSTUR Z PROTOTYPU (1:1) ---
+    function applyTextureToMaterial(event, materialNamePart) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const url = URL.createObjectURL(file);
+        textureLoader.load(url, (texture) => {
+            texture.flipY = false;
+            texture.colorSpace = THREE.SRGBColorSpace;
+
+            model.traverse(node => {
+                if (node.isMesh && node.name.toLowerCase().includes('badge')) {
+                    const materials = Array.isArray(node.material) ? node.material : [node.material];
+                    
+                    materials.forEach(mat => {
+                        // Szukamy materiału po nazwie (Badge_Front / Badge_Back)
+                        if (mat.name.includes(materialNamePart)) {
+                            // Resetujemy kolor bazowy na biały, by nie barwił tekstury
+                            mat.color.set(0xffffff);
+                            // Wpinamy teksturę (Logika z prototypu)
+                            mat.map = texture;
+                            mat.alphaMap = texture;
+                            mat.transparent = true;
+                            mat.needsUpdate = true;
+                        }
+                    });
+                }
+            });
+            URL.revokeObjectURL(url);
+        });
+    }
+
+    // Event listenery jak w prototypie
+    document.getElementById('texFront').addEventListener('change', (e) => applyTextureToMaterial(e, 'Front'));
+    document.getElementById('texBack').addEventListener('change', (e) => applyTextureToMaterial(e, 'Back'));
+
+    // Logo też z tą samą logiką
+    document.getElementById('texLogo').addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const url = URL.createObjectURL(file);
+        textureLoader.load(url, (tex) => {
+            tex.flipY = false;
+            model.traverse(n => {
+                if (n.isMesh && n.name.toLowerCase().includes('logo')) {
+                    n.material.color.set(0xffffff);
+                    n.material.map = tex;
+                    n.material.alphaMap = tex;
+                    n.material.transparent = true;
+                    n.material.needsUpdate = true;
+                }
+            });
+        });
+    });
+
+    // --- INNE FUNKCJE UI ---
     window.toggleBackgroundMode = (mode) => {
         scene.background = (mode === 'color') ? new THREE.Color(document.getElementById('bg-color-picker').value) : scene.environment;
     };
@@ -159,69 +227,25 @@
         scene.background = new THREE.Color(hex);
     };
 
-    // --- FUNKCJE MODELU ---
     window.updateColor = (name, hex) => {
-        const color = new THREE.Color(hex);
         model.traverse(n => {
             if (n.isMesh && n.name.toLowerCase().includes(name.toLowerCase())) {
-                n.material.color = color;
+                n.material.color = new THREE.Color(hex);
             }
         });
-        if(document.getElementById('hex-' + name)) document.getElementById('hex-' + name).value = hex;
-        if(document.getElementById('cp-' + name)) document.getElementById('cp-' + name).value = hex;
+    };
+
+    window.updatePhysic = (name, rough, metal) => {
+        model.traverse(n => {
+            if (n.isMesh && n.name.toLowerCase().includes(name.toLowerCase())) {
+                n.material.roughness = rough;
+                n.material.metalness = metal;
+            }
+        });
     };
 
     window.setScale = (name, s) => {
         model.traverse(n => { if (n.name.toLowerCase().includes(name.toLowerCase())) n.scale.set(s, s, s); });
-    };
-
-    // LOGIKA PROTOTYPU DLA BADGE
-    window.updateBadgeSide = (matName, input) => {
-        if (!input.files[0]) return;
-        const url = URL.createObjectURL(input.files[0]);
-        
-        texLoader.load(url, (texture) => {
-            texture.flipY = false;
-            texture.colorSpace = THREE.SRGBColorSpace;
-
-            model.traverse(node => {
-                if (node.isMesh && node.name.toLowerCase().includes('badge')) {
-                    const materials = Array.isArray(node.material) ? node.material : [node.material];
-                    
-                    materials.forEach(mat => {
-                        // Szukamy materiału o nazwie Badge_Front lub Badge_Back
-                        if (mat.name.includes(matName)) {
-                            mat.color.set(0xffffff); // Czyścimy kolor bazowy
-                            mat.map = texture;       // Base Color
-                            mat.alphaMap = texture;  // Alpha
-                            mat.transparent = true;
-                            mat.alphaTest = 0.05;
-                            mat.needsUpdate = true;
-                        }
-                    });
-                }
-            });
-            URL.revokeObjectURL(url);
-        });
-    };
-
-    window.updateLogoTexture = (input) => {
-        if (!input.files[0]) return;
-        const url = URL.createObjectURL(input.files[0]);
-        texLoader.load(url, (tex) => {
-            tex.flipY = false;
-            tex.colorSpace = THREE.SRGBColorSpace;
-            model.traverse(n => {
-                if (n.isMesh && n.name.toLowerCase().includes('logo')) {
-                    n.material.color.set(0xffffff);
-                    n.material.map = tex;
-                    n.material.alphaMap = tex;
-                    n.material.transparent = true;
-                    n.material.alphaTest = 0.05;
-                    n.material.needsUpdate = true;
-                }
-            });
-        });
     };
 
     function animate() {
@@ -231,6 +255,12 @@
     }
 
     init();
+
+    window.addEventListener('resize', () => {
+        camera.aspect = (window.innerWidth - 380) / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth - 380, window.innerHeight);
+    });
 </script>
 </body>
 </html>
