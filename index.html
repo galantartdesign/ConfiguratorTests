@@ -2,43 +2,61 @@
 <html lang="pl">
 <head>
     <meta charset="UTF-8">
-    <title>Konfigurator Bombki - Final Debug</title>
+    <title>Konfigurator Bombki - Final Fix</title>
     <style>
-        body { margin: 0; background: #111; color: white; font-family: sans-serif; display: flex; }
-        #canvas-container { flex: 1; height: 100vh; }
-        #ui-panel { width: 350px; background: #222; padding: 20px; border-left: 1px solid #444; overflow-y: auto; }
-        .section { background: #333; padding: 15px; border-radius: 8px; margin-bottom: 15px; }
-        input, select { width: 100%; margin: 10px 0; padding: 8px; background: #111; color: white; border: 1px solid #555; }
-        #status-log { position: fixed; bottom: 10px; left: 10px; background: rgba(0,0,0,0.8); padding: 10px; font-size: 12px; color: #0f0; pointer-events: none; }
+        :root { --panel-bg: #1e1e1e; --item-bg: #2d2d2d; --text: #e0e0e0; --accent: #3498db; }
+        body { margin: 0; font-family: 'Segoe UI', sans-serif; display: flex; height: 100vh; background: #000; color: var(--text); overflow: hidden; }
+        #canvas-container { flex: 1; position: relative; }
+        #ui-panel { width: 380px; background: var(--panel-bg); padding: 20px; overflow-y: auto; border-left: 1px solid #333; }
+        .section { background: var(--item-bg); border-radius: 10px; padding: 15px; margin-bottom: 20px; border: 1px solid #444; }
+        h3 { font-size: 13px; margin: 0 0 12px 0; text-transform: uppercase; color: #888; }
+        label { display: block; font-size: 11px; margin: 10px 0 5px; color: #aaa; }
+        .control-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+        input[type="text"], select, input[type="range"] { width: 100%; background: #111; color: white; border: 1px solid #444; padding: 8px; border-radius: 4px; box-sizing: border-box; }
+        input[type="color"] { width: 50px; height: 38px; border: none; background: none; cursor: pointer; }
+        button { background: #444; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 11px; flex: 1; min-width: 60px; }
+        button:hover { background: #555; }
+        #loader { position: fixed; inset: 0; background: #000; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 1000; }
     </style>
 </head>
 <body>
 
-<div id="status-log">Status: Inicjalizacja...</div>
+<div id="loader"><p>Wczytywanie bombki...</p></div>
 <div id="canvas-container"></div>
 
 <div id="ui-panel">
     <div class="section">
-        <h3>1. Oświetlenie (HDRI)</h3>
+        <h3>1. Oświetlenie i Tło</h3>
         <select id="hdri-select" onchange="updateHDRI(this.value)">
-            <option value="textures/geislingen_an_der_steige_2k.hdr">Geislingen (2k)</option>
-            <option value="textures/royal_esplanade_4k.hdr">Royal Esplanade (4k)</option>
-            <option value="textures/spiaggia_di_mondello_4k.hdr">Spiaggia Mondello (4k)</option>
+            <option value="textures/geislingen_an_der_steige_2k.hdr">Geislingen</option>
+            <option value="textures/royal_esplanade_4k.hdr">Royal Esplanade</option>
+            <option value="textures/spiaggia_di_mondello_4k.hdr">Spiaggia Mondello</option>
         </select>
-        <label>Obrót światła:</label>
+        <label>Obrót światła (HDRI):</label>
         <input type="range" id="hdri-rot" min="0" max="6.28" step="0.01" value="0" oninput="applyRotation(this.value)">
     </div>
 
     <div class="section">
         <h3>2. Etykieta (Badge)</h3>
-        <label>Front:</label>
-        <input type="file" onchange="updateBadgeSpecific(0, this)">
-        <label>Tył:</label>
-        <input type="file" onchange="updateBadgeSpecific(1, this)">
+        <label>Front (Materiał 1):</label>
+        <input type="file" onchange="updateBadgeByIndex(0, this)">
+        <label>Tył (Materiał 2):</label>
+        <input type="file" onchange="updateBadgeByIndex(1, this)">
+        <label>Skala Etykiety:</label>
+        <div class="control-row">
+            <button onclick="setScale('Badge', 0.6)">0.6x</button>
+            <button onclick="setScale('Badge', 1.0)">1.0x</button>
+            <button onclick="setScale('Badge', 1.3)">1.3x</button>
+        </div>
     </div>
 
     <div class="section">
-        <h3>3. Kolory</h3>
+        <h3>3. Logo</h3>
+        <input type="file" accept="image/png" onchange="updateLogo(this)">
+    </div>
+    
+    <div class="section">
+        <h3>4. Kolory</h3>
         <label>Bombka:</label>
         <input type="color" value="#ffffff" oninput="updateColor('Sphere', this.value)">
         <label>Wstążka:</label>
@@ -62,39 +80,42 @@
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
     let scene, camera, renderer, controls, model, pmremGenerator;
-    const log = (msg) => document.getElementById('status-log').innerText = "Status: " + msg;
+    const texLoader = new THREE.TextureLoader();
 
     async function init() {
         scene = new THREE.Scene();
-        camera = new THREE.PerspectiveCamera(40, (window.innerWidth - 350) / window.innerHeight, 0.1, 1000);
+        scene.background = new THREE.Color(0x1a1a1a);
+
+        camera = new THREE.PerspectiveCamera(40, (window.innerWidth - 380) / window.innerHeight, 0.1, 1000);
         camera.position.set(0, 0.5, 4);
 
         renderer = new THREE.WebGLRenderer({ antialias: true });
-        renderer.setSize(window.innerWidth - 350, window.innerHeight);
+        renderer.setSize(window.innerWidth - 380, window.innerHeight);
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
         renderer.outputColorSpace = THREE.SRGBColorSpace;
         document.getElementById('canvas-container').appendChild(renderer.domElement);
 
         pmremGenerator = new THREE.PMREMGenerator(renderer);
         controls = new OrbitControls(camera, renderer.domElement);
-
+        
         updateHDRI(document.getElementById('hdri-select').value);
 
         new GLTFLoader().load('Bombka.glb', (gltf) => {
             model = gltf.scene;
             scene.add(model);
-            log("Model załadowany.");
+            document.getElementById('loader').style.display = 'none';
         });
 
         animate();
     }
 
-    // NAPRAWA OBROTU HDRI - r160 wymaga modyfikacji environmentRotation
+    // --- NAPRAWA HDR ---
     window.applyRotation = (val) => {
-        const r = parseFloat(val);
-        scene.environmentRotation.set(0, r, 0);
+        const rot = parseFloat(val);
+        // W r160 musimy użyć .set na environmentRotation
+        scene.environmentRotation.set(0, rot, 0);
         if (scene.background instanceof THREE.Texture) {
-            scene.backgroundRotation.set(0, r, 0);
+            scene.backgroundRotation.set(0, rot, 0);
         }
     };
 
@@ -104,32 +125,49 @@
             const envMap = pmremGenerator.fromEquirectangular(texture).texture;
             scene.environment = envMap;
             scene.background = envMap;
-            log("HDR aktywny.");
+            texture.dispose();
+            // Przywróć rotację po zmianie mapy
             applyRotation(document.getElementById('hdri-rot').value);
-        }, undefined, (err) => log("BŁĄD HDR: " + path));
+        });
     };
 
-    // NAPRAWA BADGE - Szukamy konkretnych materiałów po nazwach z Twojego Blendera
-    window.updateBadgeSpecific = (index, input) => {
+    // --- NAPRAWA BADGE (PO INDEKSIE) ---
+    window.updateBadgeByIndex = (index, input) => {
         if (!input.files[0]) return;
         const url = URL.createObjectURL(input.files[0]);
-        new THREE.TextureLoader().load(url, (tex) => {
+        texLoader.load(url, (tex) => {
             tex.flipY = false;
             tex.colorSpace = THREE.SRGBColorSpace;
-            
-            // Celujemy w nazwy materiałów: Badge_Front i Badge_Back
-            const targetName = (index === 0) ? "Badge_Front" : "Badge_Back";
-            
             model.traverse(n => {
                 if (n.isMesh && n.name.toLowerCase().includes('badge')) {
-                    const mats = Array.isArray(n.material) ? n.material : [n.material];
-                    mats.forEach(m => {
-                        if (m.name.includes(targetName)) {
-                            m.map = tex;
-                            m.needsUpdate = true;
-                            log("Zmieniono: " + targetName);
+                    // Sprawdzamy czy obiekt ma listę materiałów
+                    if (Array.isArray(n.material)) {
+                        if (n.material[index]) {
+                            n.material[index].map = tex;
+                            n.material[index].transparent = true;
+                            n.material[index].needsUpdate = true;
                         }
-                    });
+                    } else if (index === 0) {
+                        n.material.map = tex;
+                        n.material.needsUpdate = true;
+                    }
+                }
+            });
+        });
+    };
+
+    window.updateLogo = (input) => {
+        if (!input.files[0]) return;
+        const url = URL.createObjectURL(input.files[0]);
+        texLoader.load(url, (tex) => {
+            tex.flipY = false;
+            tex.colorSpace = THREE.SRGBColorSpace;
+            model.traverse(n => {
+                if (n.isMesh && n.name.toLowerCase().includes('logo')) {
+                    n.material.map = tex;
+                    n.material.transparent = true;
+                    n.material.alphaTest = 0.1;
+                    n.material.needsUpdate = true;
                 }
             });
         });
@@ -139,6 +177,14 @@
         model.traverse(n => {
             if (n.isMesh && n.name.toLowerCase().includes(name.toLowerCase())) {
                 n.material.color.set(hex);
+            }
+        });
+    };
+
+    window.setScale = (name, s) => {
+        model.traverse(n => {
+            if (n.name.toLowerCase().includes(name.toLowerCase())) {
+                n.scale.set(s, s, s);
             }
         });
     };
