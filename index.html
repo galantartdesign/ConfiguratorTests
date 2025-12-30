@@ -19,49 +19,84 @@
         button:hover { background: #555; }
         select, input[type="range"] { width: 100%; background: #111; color: white; border: 1px solid #444; padding: 8px; border-radius: 4px; }
         #loader { position: fixed; inset: 0; background: #000; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 1000; }
-        .spinner { border: 4px solid #333; border-top: 4px solid var(--accent); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; }
+        .spinner { border: 4px solid #333; border-top: 4px solid var(--accent); border-radius: 50%; width: 40px; height: 40px; animation: spin 1s linear infinite; margin-bottom: 15px; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
 
-<div id="loader"><div class="spinner"></div><p>Wczytywanie...</p></div>
+<div id="loader"><div class="spinner"></div><p>Wczytywanie bombki...</p></div>
 <div id="canvas-container"></div>
 
 <div id="ui-panel">
     <div class="section">
-        <h3>1. Oświetlenie (HDRI)</h3>
+        <h3>1. Oświetlenie i Tło</h3>
         <select id="hdri-select" onchange="updateHDRI(this.value)">
             <option value="textures/geislingen_an_der_steige_2k.hdr">Geislingen</option>
             <option value="textures/royal_esplanade_4k.hdr">Royal Esplanade</option>
+            <option value="textures/spiaggia_di_mondello_4k.hdr">Spiaggia Mondello</option>
         </select>
-        <label>Obrót światła:</label>
+        <label>Tryb tła:</label>
+        <select id="bg-mode" onchange="toggleBackgroundMode(this.value)">
+            <option value="hdri">Pokaż HDRI</option>
+            <option value="color">Jednolity Kolor</option>
+        </select>
+        <input type="color" id="bg-color-picker" value="#1a1a1a" oninput="updateBgColor(this.value)">
+        <label>Obrót światła (HDRI):</label>
         <input type="range" id="hdri-rot" min="0" max="6.28" step="0.01" value="0" oninput="rotateEnv(this.value)">
     </div>
 
     <div class="section">
-        <h3>2. Etykieta (Badge)</h3>
-        <label>Front:</label>
-        <input type="file" id="texFront" accept="image/*">
-        <label>Tył:</label>
-        <input type="file" id="texBack" accept="image/*">
-    </div>
-
-    <div class="section">
-        <h3>3. Bombka i Wstążka</h3>
-        <label>Bombka:</label>
+        <h3>2. Bombka (Sphere)</h3>
         <div class="input-group">
-            <input type="color" value="#ffffff" oninput="updateColor('Sphere', this.value)">
+            <input type="color" id="cp-Sphere" value="#ffffff" oninput="updateColor('Sphere', this.value)">
+            <input type="text" id="hex-Sphere" placeholder="#ffffff" onchange="updateColor('Sphere', this.value)">
         </div>
-        <label>Wstążka:</label>
-        <div class="input-group">
-            <input type="color" value="#ffffff" oninput="updateColor('Ribbon', this.value)">
+        <div class="control-row">
+            <button onclick="updatePhysic('Sphere', 0.05, 0.4)">Glossy</button>
+            <button onclick="updatePhysic('Sphere', 0.9, 0.0)">Matte</button>
+            <button onclick="updatePhysic('Sphere', 0.2, 1.0)">Metal</button>
         </div>
     </div>
 
     <div class="section">
-        <h3>4. Logo</h3>
-        <input type="file" id="texLogo" accept="image/*">
+        <h3>3. Wstążka i Zawieszka</h3>
+        <div class="input-group">
+            <input type="color" id="cp-Ribbon" value="#ffffff" oninput="updateColor('Ribbon', this.value); updateColor('Hang', this.value)">
+            <input type="text" id="hex-Ribbon" placeholder="#ffffff" onchange="updateColor('Ribbon', this.value); updateColor('Hang', this.value)">
+        </div>
+        <div class="control-row">
+            <button onclick="updatePhysic('Ribbon', 0.1, 0.2); updatePhysic('Hang', 0.1, 0.2)">Glossy</button>
+            <button onclick="updatePhysic('Ribbon', 0.9, 0.0); updatePhysic('Hang', 0.9, 0.0)">Matte</button>
+            <button onclick="updatePhysic('Ribbon', 0.2, 1.0); updatePhysic('Hang', 0.2, 1.0)">Metal</button>
+        </div>
+        <label>Skala:</label>
+        <div class="control-row">
+            <button onclick="setScale('Ribbon', 0.6)">0.6x</button>
+            <button onclick="setScale('Ribbon', 1.0)">1.0x</button>
+            <button onclick="setScale('Ribbon', 1.3)">1.3x</button>
+        </div>
+    </div>
+
+    <div class="section">
+        <h3>4. Etykieta (Badge)</h3>
+        <label>Wgraj Front (Badge_Front):</label>
+        <input type="file" id="texFront" accept="image/png">
+        
+        <label>Wgraj Tył (Badge_Back):</label>
+        <input type="file" id="texBack" accept="image/png">
+        
+        <label>Skala Etykiety:</label>
+        <div class="control-row">
+            <button onclick="setScale('Badge', 0.6)">0.6x</button>
+            <button onclick="setScale('Badge', 1.0)">1.0x</button>
+            <button onclick="setScale('Badge', 1.3)">1.3x</button>
+        </div>
+    </div>
+
+    <div class="section">
+        <h3>5. Logo</h3>
+        <input type="file" accept="image/png" id="texLogo">
     </div>
 </div>
 
@@ -81,14 +116,17 @@
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
     let scene, camera, renderer, controls, model, pmremGenerator, currentHDRTexture;
+    let matFront = null, matBack = null;
     const textureLoader = new THREE.TextureLoader();
 
     async function init() {
         scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x1a1a1a);
+
         camera = new THREE.PerspectiveCamera(40, (window.innerWidth - 380) / window.innerHeight, 0.1, 1000);
         camera.position.set(0, 0.5, 4);
 
-        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setSize(window.innerWidth - 380, window.innerHeight);
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
         renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -98,27 +136,47 @@
         controls = new OrbitControls(camera, renderer.domElement);
         controls.enableDamping = true;
 
-        // Ładowanie HDR (Zgodnie z prototypem - Ambient jako fallback)
-        scene.add(new THREE.AmbientLight(0xffffff, 0.5));
         updateHDRI(document.getElementById('hdri-select').value);
 
         new GLTFLoader().load('Bombka.glb', (gltf) => {
             model = gltf.scene;
             scene.add(model);
+            
+            // ANALIZA HIERARCHII - Tak jak w Twoim prototypie
+            model.traverse((child) => {
+                if (child.isMesh && child.material) {
+                    const mats = Array.isArray(child.material) ? child.material : [child.material];
+                    mats.forEach(m => {
+                        if (m.name === "Badge_Front") { matFront = m; resetMaterial(m); }
+                        if (m.name === "Badge_Back") { matBack = m; resetMaterial(m); }
+                    });
+                }
+            });
+
             document.getElementById('loader').style.display = 'none';
         });
 
         animate();
     }
 
-    // --- LOGIKA HDRI (Uproszczona, by wyeliminować błędy) ---
+    // RESET MATERIAŁU Z PROTOTYPU
+    function resetMaterial(m) {
+        m.map = null;
+        m.color.set(0xffffff);
+        m.transparent = true;
+        m.alphaTest = 0.01;
+        m.side = THREE.DoubleSide;
+        m.needsUpdate = true;
+    }
+
+    // HDRI & ROTACJA
     window.updateHDRI = (path) => {
         new RGBELoader().load(path, (texture) => {
             texture.mapping = THREE.EquirectangularReflectionMapping;
             currentHDRTexture = texture;
             const envMap = pmremGenerator.fromEquirectangular(texture).texture;
             scene.environment = envMap;
-            scene.background = envMap;
+            if (document.getElementById('bg-mode').value === 'hdri') scene.background = envMap;
             rotateEnv(document.getElementById('hdri-rot').value);
         });
     };
@@ -129,50 +187,77 @@
         scene.backgroundRotation.set(0, r, 0);
     };
 
-    // --- LOGIKA Z PROTOTYPU (1:1 IMPLEMENTACJA) ---
-    function applyTexture(event, materialNamePart) {
+    window.toggleBackgroundMode = (mode) => {
+        scene.background = (mode === 'color') ? new THREE.Color(document.getElementById('bg-color-picker').value) : scene.environment;
+    };
+
+    window.updateBgColor = (hex) => {
+        document.getElementById('bg-mode').value = 'color';
+        scene.background = new THREE.Color(hex);
+    };
+
+    // FUNKCJA ŁADOWANIA Z PROTOTYPU
+    function handleImageUpload(event, material) {
+        if (!material) return;
         const file = event.target.files[0];
-        if (!file || !model) return;
+        if (!file) return;
 
         const url = URL.createObjectURL(file);
         textureLoader.load(url, (texture) => {
             texture.flipY = false;
             texture.colorSpace = THREE.SRGBColorSpace;
-
-            model.traverse((child) => {
-                if (child.isMesh) {
-                    const materials = Array.isArray(child.material) ? child.material : [child.material];
-                    materials.forEach((mat) => {
-                        // Sprawdzamy czy nazwa materiału zawiera frazę (np. "Front" lub "Back")
-                        if (mat.name.includes(materialNamePart)) {
-                            mat.color.set(0xffffff); // Reset koloru bazowego
-                            mat.map = texture;
-                            mat.alphaMap = texture;
-                            mat.transparent = true;
-                            mat.needsUpdate = true;
-                        }
-                    });
-                }
-            });
+            texture.format = THREE.RGBAFormat; // Wymuszenie czytania alfy z PNG
+            
+            material.map = texture;
+            material.transparent = true;
+            material.needsUpdate = true;
             URL.revokeObjectURL(url);
         });
     }
 
-    // Podpięcie eventów jak w prototypie
-    document.getElementById('texFront').addEventListener('change', (e) => applyTexture(e, 'Front'));
-    document.getElementById('texBack').addEventListener('change', (e) => applyTexture(e, 'Back'));
+    // PODPIĘCIE EVENTÓW Z PROTOTYPU
+    document.getElementById('texFront').addEventListener('change', (e) => handleImageUpload(e, matFront));
+    document.getElementById('texBack').addEventListener('change', (e) => handleImageUpload(e, matBack));
+    
     document.getElementById('texLogo').addEventListener('change', (e) => {
-        // Logo używa tej samej logiki co prototyp, szukając słowa "Logo" w nazwie materiału
-        applyTexture(e, 'Logo');
+        const file = e.target.files[0];
+        if (!file) return;
+        const url = URL.createObjectURL(file);
+        textureLoader.load(url, (tex) => {
+            tex.flipY = false;
+            model.traverse(n => {
+                if (n.isMesh && n.name.toLowerCase().includes('logo')) {
+                    n.material.map = tex;
+                    n.material.transparent = true;
+                    n.material.alphaTest = 0.05;
+                    n.material.needsUpdate = true;
+                }
+            });
+        });
     });
 
-    // --- FUNKCJE POMOCNICZE ---
+    // KOLORY I FIZYKA
     window.updateColor = (name, hex) => {
         model.traverse(n => {
             if (n.isMesh && n.name.toLowerCase().includes(name.toLowerCase())) {
                 n.material.color.set(hex);
             }
         });
+        if(document.getElementById('hex-' + name)) document.getElementById('hex-' + name).value = hex;
+        if(document.getElementById('cp-' + name)) document.getElementById('cp-' + name).value = hex;
+    };
+
+    window.updatePhysic = (name, rough, metal) => {
+        model.traverse(n => {
+            if (n.isMesh && n.name.toLowerCase().includes(name.toLowerCase())) {
+                n.material.roughness = rough;
+                n.material.metalness = metal;
+            }
+        });
+    };
+
+    window.setScale = (name, s) => {
+        model.traverse(n => { if (n.name.toLowerCase().includes(name.toLowerCase())) n.scale.set(s, s, s); });
     };
 
     function animate() {
