@@ -34,7 +34,6 @@
         <select id="hdri-select" onchange="updateHDRI(this.value)">
             <option value="textures/geislingen_an_der_steige_2k.hdr">Geislingen</option>
             <option value="textures/royal_esplanade_4k.hdr">Royal Esplanade</option>
-            <option value="textures/spiaggia_di_mondello_4k.hdr">Spiaggia Mondello</option>
         </select>
         <label>Tryb tła:</label>
         <select id="bg-mode" onchange="toggleBackgroundMode(this.value)">
@@ -70,23 +69,15 @@
             <button onclick="updatePhysic('Ribbon', 0.9, 0.0); updatePhysic('Hang', 0.9, 0.0)">Matte</button>
             <button onclick="updatePhysic('Ribbon', 0.2, 1.0); updatePhysic('Hang', 0.2, 1.0)">Metal</button>
         </div>
-        <label>Skala:</label>
-        <div class="control-row">
-            <button onclick="setScale('Ribbon', 0.6)">0.6x</button>
-            <button onclick="setScale('Ribbon', 1.0)">1.0x</button>
-            <button onclick="setScale('Ribbon', 1.3)">1.3x</button>
-        </div>
     </div>
 
     <div class="section">
         <h3>4. Etykieta (Badge)</h3>
-        <label>Wgraj Front (Badge_Front):</label>
+        <label>Front:</label>
         <input type="file" id="texFront" accept="image/png">
-        
-        <label>Wgraj Tył (Badge_Back):</label>
+        <label>Tył:</label>
         <input type="file" id="texBack" accept="image/png">
-        
-        <label>Skala Etykiety:</label>
+        <label>Skala:</label>
         <div class="control-row">
             <button onclick="setScale('Badge', 0.6)">0.6x</button>
             <button onclick="setScale('Badge', 1.0)">1.0x</button>
@@ -96,7 +87,7 @@
 
     <div class="section">
         <h3>5. Logo</h3>
-        <input type="file" accept="image/png" id="texLogo">
+        <input type="file" id="texLogo" accept="image/png">
     </div>
 </div>
 
@@ -121,8 +112,6 @@
 
     async function init() {
         scene = new THREE.Scene();
-        scene.background = new THREE.Color(0x1a1a1a);
-
         camera = new THREE.PerspectiveCamera(40, (window.innerWidth - 380) / window.innerHeight, 0.1, 1000);
         camera.position.set(0, 0.5, 4);
 
@@ -134,7 +123,6 @@
 
         pmremGenerator = new THREE.PMREMGenerator(renderer);
         controls = new OrbitControls(camera, renderer.domElement);
-        controls.enableDamping = true;
 
         updateHDRI(document.getElementById('hdri-select').value);
 
@@ -142,7 +130,6 @@
             model = gltf.scene;
             scene.add(model);
             
-            // ANALIZA HIERARCHII - Tak jak w Twoim prototypie
             model.traverse((child) => {
                 if (child.isMesh && child.material) {
                     const mats = Array.isArray(child.material) ? child.material : [child.material];
@@ -152,16 +139,13 @@
                     });
                 }
             });
-
             document.getElementById('loader').style.display = 'none';
         });
 
         animate();
     }
 
-    // RESET MATERIAŁU Z PROTOTYPU
     function resetMaterial(m) {
-        m.map = null;
         m.color.set(0xffffff);
         m.transparent = true;
         m.alphaTest = 0.01;
@@ -169,7 +153,6 @@
         m.needsUpdate = true;
     }
 
-    // HDRI & ROTACJA
     window.updateHDRI = (path) => {
         new RGBELoader().load(path, (texture) => {
             texture.mapping = THREE.EquirectangularReflectionMapping;
@@ -177,7 +160,6 @@
             const envMap = pmremGenerator.fromEquirectangular(texture).texture;
             scene.environment = envMap;
             if (document.getElementById('bg-mode').value === 'hdri') scene.background = envMap;
-            rotateEnv(document.getElementById('hdri-rot').value);
         });
     };
 
@@ -196,29 +178,23 @@
         scene.background = new THREE.Color(hex);
     };
 
-    // FUNKCJA ŁADOWANIA Z PROTOTYPU
     function handleImageUpload(event, material) {
         if (!material) return;
         const file = event.target.files[0];
         if (!file) return;
-
         const url = URL.createObjectURL(file);
         textureLoader.load(url, (texture) => {
             texture.flipY = false;
             texture.colorSpace = THREE.SRGBColorSpace;
-            texture.format = THREE.RGBAFormat; // Wymuszenie czytania alfy z PNG
-            
+            texture.format = THREE.RGBAFormat; // Czytanie RGB + Alpha z PNG
             material.map = texture;
             material.transparent = true;
             material.needsUpdate = true;
-            URL.revokeObjectURL(url);
         });
     }
 
-    // PODPIĘCIE EVENTÓW Z PROTOTYPU
     document.getElementById('texFront').addEventListener('change', (e) => handleImageUpload(e, matFront));
     document.getElementById('texBack').addEventListener('change', (e) => handleImageUpload(e, matBack));
-    
     document.getElementById('texLogo').addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -236,15 +212,14 @@
         });
     });
 
-    // KOLORY I FIZYKA
     window.updateColor = (name, hex) => {
         model.traverse(n => {
             if (n.isMesh && n.name.toLowerCase().includes(name.toLowerCase())) {
                 n.material.color.set(hex);
             }
         });
-        if(document.getElementById('hex-' + name)) document.getElementById('hex-' + name).value = hex;
-        if(document.getElementById('cp-' + name)) document.getElementById('cp-' + name).value = hex;
+        document.getElementById('hex-' + name).value = hex;
+        document.getElementById('cp-' + name).value = hex;
     };
 
     window.updatePhysic = (name, rough, metal) => {
@@ -265,7 +240,6 @@
         controls.update();
         renderer.render(scene, camera);
     }
-
     init();
 </script>
 </body>
