@@ -25,7 +25,7 @@
 </head>
 <body>
 
-<div id="loader"><div class="spinner"></div><p>Wczytywanie sceny...</p></div>
+<div id="loader"><div class="spinner"></div><p>Wczytywanie bombki...</p></div>
 <div id="canvas-container"></div>
 
 <div id="ui-panel">
@@ -80,10 +80,12 @@
 
     <div class="section">
         <h3>4. Etykieta (Badge)</h3>
-        <label>Wgraj Front (Slot 1):</label>
-        <input type="file" onchange="updateBadgeBySlot(0, this)">
-        <label>Wgraj Tył (Slot 2):</label>
-        <input type="file" onchange="updateBadgeBySlot(1, this)">
+        <label>Wgraj Front (Badge_Front):</label>
+        <input type="file" onchange="updateBadgeSide('Front', this)">
+        
+        <label>Wgraj Tył (Badge_Back):</label>
+        <input type="file" onchange="updateBadgeSide('Back', this)">
+        
         <label>Skala Etykiety:</label>
         <div class="control-row">
             <button onclick="setScale('Badge', 0.6)">0.6x</button>
@@ -113,7 +115,7 @@
     import { RGBELoader } from 'three/addons/loaders/RGBELoader.js';
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
-    let scene, camera, renderer, controls, model, pmremGenerator;
+    let scene, camera, renderer, controls, model, pmremGenerator, currentHDRTexture;
     const texLoader = new THREE.TextureLoader();
 
     async function init() {
@@ -144,38 +146,29 @@
         animate();
     }
 
-    // --- NOWA LOGIKA HDRI ---
     window.updateHDRI = (path) => {
         new RGBELoader().load(path, (texture) => {
             texture.mapping = THREE.EquirectangularReflectionMapping;
+            currentHDRTexture = texture;
             const envMap = pmremGenerator.fromEquirectangular(texture).texture;
-            
             scene.environment = envMap;
-            if (document.getElementById('bg-mode').value === 'hdri') {
-                scene.background = envMap;
-            }
-
-            // Inicjalizacja rotacji na podstawie suwaka
+            if (document.getElementById('bg-mode').value === 'hdri') scene.background = envMap;
             rotateEnv(document.getElementById('hdri-rot').value);
-            texture.dispose();
         });
     };
 
     window.rotateEnv = (val) => {
         const rot = parseFloat(val);
-        // Bezpośrednia rotacja właściwości sceny (Dla Three.js r160)
-        scene.environmentRotation.y = rot;
-        if (scene.background instanceof THREE.Texture) {
-            scene.backgroundRotation.y = rot;
+        if (currentHDRTexture) {
+            currentHDRTexture.offset.set(rot / (2 * Math.PI), 0);
+            const envMap = pmremGenerator.fromEquirectangular(currentHDRTexture).texture;
+            scene.environment = envMap;
+            if (scene.background instanceof THREE.Texture) scene.background = envMap;
         }
     };
 
     window.toggleBackgroundMode = (mode) => {
-        if (mode === 'color') {
-            scene.background = new THREE.Color(document.getElementById('bg-color-picker').value);
-        } else {
-            scene.background = scene.environment;
-        }
+        scene.background = (mode === 'color') ? new THREE.Color(document.getElementById('bg-color-picker').value) : scene.environment;
     };
 
     window.updateBgColor = (hex) => {
@@ -183,7 +176,6 @@
         scene.background = new THREE.Color(hex);
     };
 
-    // --- FUNKCJE MODELU ---
     window.updateColor = (name, hex) => {
         const color = new THREE.Color(hex);
         model.traverse(n => {
@@ -191,8 +183,6 @@
                 n.material.color = color;
             }
         });
-        if(document.getElementById('hex-' + name)) document.getElementById('hex-' + name).value = hex;
-        if(document.getElementById('cp-' + name)) document.getElementById('cp-' + name).value = hex;
     };
 
     window.updatePhysic = (name, rough, metal) => {
@@ -205,9 +195,7 @@
     };
 
     window.setScale = (name, s) => {
-        model.traverse(n => {
-            if (n.name.toLowerCase().includes(name.toLowerCase())) n.scale.set(s, s, s);
-        });
+        model.traverse(n => { if (n.name.toLowerCase().includes(name.toLowerCase())) n.scale.set(s, s, s); });
     };
 
     window.updateLogoTexture = (input) => {
@@ -227,30 +215,32 @@
         });
     };
 
-    // --- NOWA LOGIKA BADGE (CELOWANIE W SLOTY 1 I 2) ---
-    window.updateBadgeBySlot = (slotIndex, input) => {
+    // NOWA LOGIKA BADGE - PRZENIESIONA Z PROTOTYPU
+    window.updateBadgeSide = (sideName, input) => {
         if (!input.files[0]) return;
         const url = URL.createObjectURL(input.files[0]);
-        texLoader.load(url, (tex) => {
-            tex.flipY = false;
-            tex.colorSpace = THREE.SRGBColorSpace;
-            model.traverse(n => {
-                if (n.isMesh && n.name.toLowerCase().includes('badge')) {
-                    // Sprawdzamy czy materiał to tablica (Multi-material)
-                    if (Array.isArray(n.material)) {
-                        if (n.material[slotIndex]) {
-                            n.material[slotIndex].map = tex;
-                            n.material[slotIndex].transparent = true;
-                            n.material[slotIndex].alphaTest = 0.05;
-                            n.material[slotIndex].needsUpdate = true;
+        
+        texLoader.load(url, (texture) => {
+            texture.flipY = false;
+            texture.colorSpace = THREE.SRGBColorSpace;
+
+            model.traverse(node => {
+                if (node.isMesh && node.name.toLowerCase().includes('badge')) {
+                    const materials = Array.isArray(node.material) ? node.material : [node.material];
+                    
+                    materials.forEach(mat => {
+                        // Celujemy w nazwę materiału z Blendera (Front lub Back)
+                        if (mat.name.includes(sideName)) {
+                            mat.color.set(0xffffff); // Reset koloru bazowego jak w prototypie
+                            mat.map = texture;       // Mapa koloru
+                            mat.alphaMap = texture;  // Mapa przezroczystości (Alpha)
+                            mat.transparent = true;
+                            mat.needsUpdate = true;
                         }
-                    } else {
-                        // Jeśli to nie tablica, a tylko jeden materiał
-                        n.material.map = tex;
-                        n.material.needsUpdate = true;
-                    }
+                    });
                 }
             });
+            URL.revokeObjectURL(url);
         });
     };
 
