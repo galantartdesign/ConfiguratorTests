@@ -2,7 +2,7 @@
 <html lang="pl">
 <head>
     <meta charset="UTF-8">
-    <title>Konfigurator Bombki - Final Fix</title>
+    <title>Konfigurator Bombki - Final Stable</title>
     <style>
         :root { --panel-bg: #1e1e1e; --item-bg: #2d2d2d; --text: #e0e0e0; --accent: #3498db; }
         body { margin: 0; font-family: 'Segoe UI', sans-serif; display: flex; height: 100vh; background: #000; color: var(--text); overflow: hidden; }
@@ -14,8 +14,8 @@
         .control-row { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
         .input-group { display: flex; gap: 5px; width: 100%; margin-bottom: 10px; }
         input[type="text"] { flex: 1; background: #111; border: 1px solid #444; color: white; padding: 8px; border-radius: 4px; font-size: 12px; }
-        input[type="color"] { width: 45px; height: 35px; border: none; background: none; cursor: pointer; }
-        button { background: #444; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 11px; min-width: 60px; }
+        input[type="color"] { width: 50px; height: 38px; border: none; background: none; cursor: pointer; }
+        button { background: #444; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; font-size: 11px; flex: 1; }
         button:hover { background: #555; }
         select, input[type="range"] { width: 100%; background: #111; color: white; border: 1px solid #444; padding: 8px; border-radius: 4px; }
         #loader { position: fixed; inset: 0; background: #000; display: flex; flex-direction: column; justify-content: center; align-items: center; z-index: 1000; }
@@ -49,7 +49,7 @@
     <div class="section">
         <h3>2. Bombka (Sphere)</h3>
         <div class="input-group">
-            <input type="color" id="cp-Sphere" oninput="updateColor('Sphere', this.value)">
+            <input type="color" id="cp-Sphere" value="#ffffff" oninput="updateColor('Sphere', this.value)">
             <input type="text" id="hex-Sphere" placeholder="#ffffff" onchange="updateColor('Sphere', this.value)">
         </div>
         <div class="control-row">
@@ -62,7 +62,7 @@
     <div class="section">
         <h3>3. Wstążka i Zawieszka</h3>
         <div class="input-group">
-            <input type="color" id="cp-Ribbon" oninput="updateColor('Ribbon', this.value); updateColor('Hang', this.value)">
+            <input type="color" id="cp-Ribbon" value="#ffffff" oninput="updateColor('Ribbon', this.value); updateColor('Hang', this.value)">
             <input type="text" id="hex-Ribbon" placeholder="#ffffff" onchange="updateColor('Ribbon', this.value); updateColor('Hang', this.value)">
         </div>
         <div class="control-row">
@@ -74,7 +74,7 @@
 
     <div class="section">
         <h3>4. Etykieta (Badge)</h3>
-        <label>Wgraj obrazek:</label>
+        <label>Front / Tył:</label>
         <input type="file" onchange="updateBadgeTexture(this)">
         <div class="control-row" style="margin-top:10px">
             <button onclick="setScale('Badge', 0.6)">0.6x</button>
@@ -105,6 +105,7 @@
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
     let scene, camera, renderer, controls, model, pmremGenerator, currentEnvTexture;
+    const texLoader = new THREE.TextureLoader();
 
     async function init() {
         scene = new THREE.Scene();
@@ -113,7 +114,7 @@
         camera = new THREE.PerspectiveCamera(40, (window.innerWidth - 380) / window.innerHeight, 0.1, 1000);
         camera.position.set(0, 0.5, 4);
 
-        renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
         renderer.setSize(window.innerWidth - 380, window.innerHeight);
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
         renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -138,13 +139,18 @@
         new RGBELoader().load(path, (texture) => {
             texture.mapping = THREE.EquirectangularReflectionMapping;
             currentEnvTexture = texture;
-            scene.environment = pmremGenerator.fromEquirectangular(texture).texture;
-            if (document.getElementById('bg-mode').value === 'hdri') scene.background = scene.environment;
+            const envMap = pmremGenerator.fromEquirectangular(texture).texture;
+            scene.environment = envMap;
+            if (document.getElementById('bg-mode').value === 'hdri') scene.background = envMap;
         });
     };
 
     window.toggleBackgroundMode = (mode) => {
-        scene.background = (mode === 'color') ? new THREE.Color(document.getElementById('bg-color-picker').value) : scene.environment;
+        if (mode === 'color') {
+            scene.background = new THREE.Color(document.getElementById('bg-color-picker').value);
+        } else {
+            scene.background = scene.environment;
+        }
     };
 
     window.updateBgColor = (hex) => {
@@ -154,10 +160,10 @@
 
     window.rotateEnv = (val) => {
         const rot = parseFloat(val);
-        if (currentEnvTexture) {
-            currentEnvTexture.offset.set(rot / (2 * Math.PI), 0); // Rotacja mapy HDR
-            scene.environment = pmremGenerator.fromEquirectangular(currentEnvTexture).texture;
-            if (scene.background instanceof THREE.Texture) scene.background = scene.environment;
+        // Najbardziej stabilna metoda rotacji środowiska dla r160
+        scene.environmentRotation.set(0, rot, 0);
+        if (scene.background instanceof THREE.Texture) {
+            scene.backgroundRotation.set(0, rot, 0);
         }
     };
 
@@ -168,8 +174,8 @@
                 n.material.color = color;
             }
         });
-        if(document.getElementById('hex-'+name)) document.getElementById('hex-'+name).value = hex;
-        if(document.getElementById('cp-'+name)) document.getElementById('cp-'+name).value = hex;
+        if(document.getElementById('hex-' + name)) document.getElementById('hex-' + name).value = hex;
+        if(document.getElementById('cp-' + name)) document.getElementById('cp-' + name).value = hex;
     };
 
     window.updatePhysic = (name, rough, metal) => {
@@ -183,21 +189,24 @@
 
     window.setScale = (name, s) => {
         model.traverse(n => {
-            if (n.name.toLowerCase().includes(name.toLowerCase())) n.scale.set(s, s, s);
+            if (n.name.toLowerCase().includes(name.toLowerCase())) {
+                n.scale.set(s, s, s);
+            }
         });
     };
 
     window.updateLogoTexture = (input) => {
         if (!input.files[0]) return;
         const url = URL.createObjectURL(input.files[0]);
-        new THREE.TextureLoader().load(url, (tex) => {
+        texLoader.load(url, (tex) => {
             tex.flipY = false;
             tex.colorSpace = THREE.SRGBColorSpace;
             model.traverse(n => {
                 if (n.isMesh && n.name.toLowerCase().includes('logo')) {
                     n.material.map = tex;
-                    n.material.transparent = true; // Naprawa Alphy
-                    n.material.alphaTest = 0.5;
+                    n.material.transparent = true;
+                    n.material.alphaTest = 0.05; // Pozwala na półprzezroczystość
+                    n.material.side = THREE.DoubleSide;
                     n.material.needsUpdate = true;
                 }
             });
@@ -207,11 +216,12 @@
     window.updateBadgeTexture = (input) => {
         if (!input.files[0]) return;
         const url = URL.createObjectURL(input.files[0]);
-        new THREE.TextureLoader().load(url, (tex) => {
+        texLoader.load(url, (tex) => {
             tex.flipY = false;
+            tex.colorSpace = THREE.SRGBColorSpace;
             model.traverse(n => {
-                // Szukamy obiektu Badge bez względu na wielkość liter
                 if (n.isMesh && n.name.toLowerCase().includes('badge')) {
+                    // Nakłada teksturę na każdy materiał obiektu Badge
                     if (Array.isArray(n.material)) {
                         n.material.forEach(m => { m.map = tex; m.needsUpdate = true; });
                     } else {
