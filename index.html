@@ -23,6 +23,7 @@
         <select id="hdri-select" onchange="updateHDRI(this.value)">
             <option value="textures/geislingen_an_der_steige_2k.hdr">Geislingen (2k)</option>
             <option value="textures/royal_esplanade_4k.hdr">Royal Esplanade (4k)</option>
+            <option value="textures/spiaggia_di_mondello_4k.hdr">Spiaggia Mondello (4k)</option>
         </select>
         <label>Obrót światła:</label>
         <input type="range" id="hdri-rot" min="0" max="6.28" step="0.01" value="0" oninput="applyRotation(this.value)">
@@ -66,67 +67,69 @@
     async function init() {
         scene = new THREE.Scene();
         camera = new THREE.PerspectiveCamera(40, (window.innerWidth - 350) / window.innerHeight, 0.1, 1000);
-        camera.position.set(0, 0, 5);
+        camera.position.set(0, 0.5, 4);
 
         renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth - 350, window.innerHeight);
         renderer.toneMapping = THREE.ACESFilmicToneMapping;
+        renderer.outputColorSpace = THREE.SRGBColorSpace;
         document.getElementById('canvas-container').appendChild(renderer.domElement);
 
         pmremGenerator = new THREE.PMREMGenerator(renderer);
         controls = new OrbitControls(camera, renderer.domElement);
 
-        // Ładowanie HDRI
         updateHDRI(document.getElementById('hdri-select').value);
 
-        // Ładowanie Modelu
-        new GLTFLoader().load('Bombka.glb', 
-            (gltf) => {
-                model = gltf.scene;
-                scene.add(model);
-                log("Model załadowany pomyślnie.");
-            },
-            undefined,
-            (err) => log("BŁĄD: Nie znaleziono pliku Bombka.glb!")
-        );
+        new GLTFLoader().load('Bombka.glb', (gltf) => {
+            model = gltf.scene;
+            scene.add(model);
+            log("Model załadowany.");
+        });
 
         animate();
     }
 
+    // NAPRAWA OBROTU HDRI - r160 wymaga modyfikacji environmentRotation
+    window.applyRotation = (val) => {
+        const r = parseFloat(val);
+        scene.environmentRotation.set(0, r, 0);
+        if (scene.background instanceof THREE.Texture) {
+            scene.backgroundRotation.set(0, r, 0);
+        }
+    };
+
     window.updateHDRI = (path) => {
-        log("Ładowanie HDR: " + path);
         new RGBELoader().load(path, (texture) => {
             texture.mapping = THREE.EquirectangularReflectionMapping;
             const envMap = pmremGenerator.fromEquirectangular(texture).texture;
             scene.environment = envMap;
             scene.background = envMap;
             log("HDR aktywny.");
-        }, undefined, (err) => log("BŁĄD: Nie znaleziono pliku " + path));
+            applyRotation(document.getElementById('hdri-rot').value);
+        }, undefined, (err) => log("BŁĄD HDR: " + path));
     };
 
-    window.applyRotation = (val) => {
-        const r = parseFloat(val);
-        scene.environmentRotation.set(0, r, 0);
-        scene.backgroundRotation.set(0, r, 0);
-    };
-
+    // NAPRAWA BADGE - Szukamy konkretnych materiałów po nazwach z Twojego Blendera
     window.updateBadgeSpecific = (index, input) => {
         if (!input.files[0]) return;
         const url = URL.createObjectURL(input.files[0]);
         new THREE.TextureLoader().load(url, (tex) => {
             tex.flipY = false;
+            tex.colorSpace = THREE.SRGBColorSpace;
+            
+            // Celujemy w nazwy materiałów: Badge_Front i Badge_Back
+            const targetName = (index === 0) ? "Badge_Front" : "Badge_Back";
+            
             model.traverse(n => {
                 if (n.isMesh && n.name.toLowerCase().includes('badge')) {
-                    if (Array.isArray(n.material)) {
-                        if (n.material[index]) {
-                            n.material[index].map = tex;
-                            n.material[index].needsUpdate = true;
-                            log("Tekstura Badge ["+index+"] zmieniona.");
+                    const mats = Array.isArray(n.material) ? n.material : [n.material];
+                    mats.forEach(m => {
+                        if (m.name.includes(targetName)) {
+                            m.map = tex;
+                            m.needsUpdate = true;
+                            log("Zmieniono: " + targetName);
                         }
-                    } else {
-                        n.material.map = tex;
-                        n.material.needsUpdate = true;
-                    }
+                    });
                 }
             });
         });
